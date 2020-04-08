@@ -2,21 +2,17 @@ package main
 
 import (
 	"context"
-	newjwt "envoy-test-filter/jwt"
+	filters "envoy-test-filter/filters"
 	"fmt"
-	"github.com/cactus/go-statsd-client/statsd"
 	ext_authz "github.com/envoyproxy/go-control-plane/envoy/service/auth/v2"
-	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type"
 	"github.com/gogo/googleapis/google/rpc"
 	"github.com/golang/protobuf/jsonpb"
-	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"log"
 	"net"
 	"os"
 	"os/signal"
-	"sort"
 )
 
 type server struct {
@@ -59,73 +55,17 @@ func (s *server) Check(ctx context.Context, req *ext_authz.CheckRequest) (*ext_a
 	} else {
 		fmt.Println(js)
 	}
-    caCert,_ := newjwt.ReadFile("./artifacts/server.pem")
-	fmt.Printf("%+v\n", req.Attributes.Source.Address)
-	fmt.Printf("%+v\n", req.Attributes.Destination.Address)
+    // Validate the token by calling the token filter.
+	resp , err := filters.ValidateToken(ctx, req)
 
-	var keys []string
-	h := false
-	for k := range req.Attributes.Request.Http.Headers {
-		if k == "authorization" {
-			//h = true
-			//header := req.Attributes.Request.Http.Headers["authorization"]
-			h, _, _ = newjwt.HandleJWT(false, caCert,req.Attributes.Request.Http.Headers )
-			fmt.Println("JWT header detected" + k)
-		}
-		keys = append(keys, k)
+	//Return if the authentication failed
+	if resp.Status.Code != int32(rpc.OK) {
+		return resp, nil
 	}
-	sort.Strings(keys)
+	//Continue to next filter
 
-	for _, k := range keys {
-		fmt.Printf("%+v:%+v\n", k, req.Attributes.Request.Http.Headers[k])
-	}
+	// Publish metrics
+	resp , err = filters.PublishMetrics(ctx, req)
 
-	resp := &ext_authz.CheckResponse{}
-	if h {
-		resp = &ext_authz.CheckResponse{
-			Status: &status.Status{Code: int32(rpc.OK)},
-			HttpResponse: &ext_authz.CheckResponse_OkResponse{
-				OkResponse: &ext_authz.OkHttpResponse{
-
-				},
-			},
-		}
-
-	} else {
-		resp = &ext_authz.CheckResponse{
-			Status: &status.Status{Code: int32(rpc.UNAUTHENTICATED)},
-			HttpResponse: &ext_authz.CheckResponse_DeniedResponse{
-				DeniedResponse: &ext_authz.DeniedHttpResponse{
-					Status:  &envoy_type.HttpStatus{
-						Code: envoy_type.StatusCode_Unauthorized,
-					},
-					Body: "Error occurred while authenticating.",
-
-				},
-			},
-		}
-	}
-
-	config := &statsd.ClientConfig{
-		Address: "127.0.0.1:8125",
-		Prefix: "test-client",
-	}
-
-	client, err := statsd.NewClientWithConfig(config)
-
-	// and handle any initialization errors
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// make sure to clean up
-	defer client.Close()
-
-	// Send a stat
-	err = client.Inc("stat1", 42, 1.0)
-	// handle any errors
-	if err != nil {
-		log.Printf("Error sending metric: %+v", err)
-	}
-	return resp, nil
+	return resp, err
 }

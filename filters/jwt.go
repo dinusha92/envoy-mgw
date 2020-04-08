@@ -1,15 +1,22 @@
-package jwt
+package filters
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/dgrijalva/jwt-go"
+	envoy_type "github.com/envoyproxy/go-control-plane/envoy/type"
+	"github.com/gogo/googleapis/google/rpc"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"strconv"
 	"strings"
 	"time"
+	ext_authz "github.com/envoyproxy/go-control-plane/envoy/service/auth/v2"
+	"google.golang.org/genproto/googleapis/rpc/status"
+
 )
 
 type JWTDataSe struct {
@@ -221,54 +228,54 @@ func isRequestScopeValid(jwtData *JWTData, requestScope string) bool {
 // get the subscription
 func getSubscription(jwtData *JWTData, apiName string, apiVersion string) Subscription {
 
-	var subscription Subscription
+	var sub Subscription
 	for _, api := range jwtData.SubscribedAPIs {
 
 		if (strings.ToLower(apiName) == strings.ToLower(api.Name)) && apiVersion == api.Version {
-			subscription.name = apiName
-			subscription.version = apiVersion
-			subscription.context = api.Context
-			subscription.publisher = api.Publisher
-			subscription.subscriptionTier = api.SubscriptionTier
-			subscription.subscriberTenantDomain = api.SubscriberTenantDomain
-			return subscription
+			sub.name = apiName
+			sub.version = apiVersion
+			sub.context = api.Context
+			sub.publisher = api.Publisher
+			sub.subscriptionTier = api.SubscriptionTier
+			sub.subscriberTenantDomain = api.SubscriberTenantDomain
+			return sub
 		}
 	}
 
 	log.Warnf("Subscription is not valid for API - %v %v", apiName, apiVersion)
-	return subscription
+	return sub
 }
 
 // get token data for JWT
 func getTokenDataForJWT(jwtData *JWTData, apiName string, apiVersion string) TokenData {
 
-	var tokenData TokenData
+	var token TokenData
 
-	tokenData.authorized = true
-	tokenData.meta_clientType = jwtData.Keytype
-	tokenData.applicationConsumerKey = jwtData.ConsumerKey
-	tokenData.applicationName = jwtData.Application.Name
-	tokenData.applicationId = strconv.Itoa(jwtData.Application.ID)
-	tokenData.applicationOwner = jwtData.Application.Owner
+	token.authorized = true
+	token.meta_clientType = jwtData.Keytype
+	token.applicationConsumerKey = jwtData.ConsumerKey
+	token.applicationName = jwtData.Application.Name
+	token.applicationId = strconv.Itoa(jwtData.Application.ID)
+	token.applicationOwner = jwtData.Application.Owner
 
 	subscription := getSubscription(jwtData, apiName, apiVersion)
 
 	if &subscription == nil {
-		tokenData.apiCreator = Unknown
-		tokenData.apiCreatorTenantDomain = Unknown
-		tokenData.apiTier = Unknown
-		tokenData.userTenantDomain = Unknown
+		token.apiCreator = Unknown
+		token.apiCreatorTenantDomain = Unknown
+		token.apiTier = Unknown
+		token.userTenantDomain = Unknown
 	} else {
-		tokenData.apiCreator = subscription.publisher
-		tokenData.apiCreatorTenantDomain = subscription.subscriberTenantDomain
-		tokenData.apiTier = subscription.subscriptionTier
-		tokenData.userTenantDomain = subscription.subscriberTenantDomain
+		token.apiCreator = subscription.publisher
+		token.apiCreatorTenantDomain = subscription.subscriberTenantDomain
+		token.apiTier = subscription.subscriptionTier
+		token.userTenantDomain = subscription.subscriberTenantDomain
 	}
 
-	tokenData.username = jwtData.Sub
-	tokenData.throttledOut = false
+	token.username = jwtData.Sub
+	token.throttledOut = false
 
-	return tokenData
+	return token
 }
 
 
@@ -281,4 +288,50 @@ func ReadFile(fileName string) ([]byte, error) {
 	}
 
 	return secretValue, err
+}
+
+
+func ValidateToken(ctx context.Context, req *ext_authz.CheckRequest) (*ext_authz.CheckResponse, error) {
+
+	caCert,_ := ReadFile("./artifacts/server.pem")
+
+	var keys []string
+	auth := false
+	for k := range req.Attributes.Request.Http.Headers {
+		if k == "authorization" {
+			//h = true
+			//header := req.Attributes.Request.Http.Headers["authorization"]
+			auth, _, _ = HandleJWT(false, caCert,req.Attributes.Request.Http.Headers )
+			fmt.Println("JWT header detected" + k)
+		}
+		keys = append(keys, k)
+	}
+
+	resp := &ext_authz.CheckResponse{}
+	if auth {
+		resp = &ext_authz.CheckResponse{
+			Status: &status.Status{Code: int32(rpc.OK)},
+			HttpResponse: &ext_authz.CheckResponse_OkResponse{
+				OkResponse: &ext_authz.OkHttpResponse{
+
+				},
+			},
+		}
+
+	} else {
+		resp = &ext_authz.CheckResponse{
+			Status: &status.Status{Code: int32(rpc.UNAUTHENTICATED)},
+			HttpResponse: &ext_authz.CheckResponse_DeniedResponse{
+				DeniedResponse: &ext_authz.DeniedHttpResponse{
+					Status:  &envoy_type.HttpStatus{
+						Code: envoy_type.StatusCode_Unauthorized,
+					},
+					Body: "Error occurred while authenticating.",
+
+				},
+			},
+		}
+	}
+
+	return resp, nil
 }
