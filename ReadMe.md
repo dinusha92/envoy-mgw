@@ -1,4 +1,4 @@
-###How to run/debug
+### How to run/debug
 
 Configured envoy yaml present in the <home>/envoy.yaml
 
@@ -8,7 +8,7 @@ Containerized environment with envoy has been configued using docker-compose.
 
 You can find the docker-compoe.yaml file in the root directory.
 
-#####Running envoy
+##### Running envoy
 
 Go to the root location of the project and execute the following command.
 
