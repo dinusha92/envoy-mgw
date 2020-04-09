@@ -1,5 +1,7 @@
 package filters
 
+// JWT token will be validated before proceeding to the gateway
+
 import (
 	"context"
 	"encoding/base64"
@@ -19,39 +21,9 @@ import (
 
 )
 
-type JWTDataSe struct {
-	Aud         string `json:"aud"`
-	Sub         string `json:"sub"`
-	Application struct {
-		ID    int    `json:"id"`
-		Name  string `json:"name"`
-		Tier  string `json:"tier"`
-		Owner string `json:"owner"`
-	} `json:"application"`
-	Scope          string `json:"scope"`
-	Iss            string `json:"iss"`
-	Keytype        string `json:"keytype"`
-	SubscribedAPIs []struct {
-		Name                   string `json:"name"`
-		Context                string `json:"context"`
-		Version                string `json:"version"`
-		Publisher              string `json:"publisher"`
-		SubscriptionTier       string `json:"subscriptionTier"`
-		SubscriberTenantDomain string `json:"subscriberTenantDomain"`
-	} `json:"subscribedAPIs"`
-	ConsumerKey string `json:"consumerKey"`
-	Exp         int    `json:"exp"`
-	Iat         int64  `json:"iat"`
-	Jti         string `json:"jti"`
-}
+//JWT represents the JWT token found in the decrypted "Authorization" header.
 
-
-const (
-	StdPadding rune = '=' // Standard padding character
-	NoPadding  rune = -1  // No padding
-)
-
-type JWTData struct {
+type JWT struct {
 	Aud         string `json:"aud"`
 	Sub         string `json:"sub"`
 	Application struct {
@@ -79,6 +51,12 @@ type JWTData struct {
 	Iat            int           `json:"iat"`
 	Jti            string        `json:"jti"`
 }
+
+const (
+	StdPadding rune = '=' // Standard padding character
+	NoPadding  rune = -1  // No padding
+)
+
 
 type Subscription struct {
 	name                   string
@@ -176,11 +154,11 @@ func validateSignature(publicCert []byte, signedContent string, signature string
 }
 
 // decode the payload
-func decodePayload(payload string) (*JWTData, error) {
+func decodePayload(payload string) (*JWT, error) {
 
 	data, err := base64.StdEncoding.WithPadding(NoPadding).DecodeString(payload)
 
-	jwtData := JWTData{}
+	jwtData := JWT{}
 	err = json.Unmarshal(data, &jwtData)
 	if err != nil {
 		log.Errorf("Error in unmarshalling payload: %v", err)
@@ -191,7 +169,7 @@ func decodePayload(payload string) (*JWTData, error) {
 }
 
 // check whether the token has expired
-func isTokenExpired(jwtData *JWTData) bool {
+func isTokenExpired(jwtData *JWT) bool {
 
 	nowTime := time.Now().Unix()
 	expireTime := int64(jwtData.Exp)
@@ -205,7 +183,7 @@ func isTokenExpired(jwtData *JWTData) bool {
 }
 
 // do resource scope validation
-func isRequestScopeValid(jwtData *JWTData, requestScope string) bool {
+func isRequestScopeValid(jwtData *JWT, requestScope string) bool {
 
 	if len(requestScope) > 0 {
 
@@ -226,7 +204,7 @@ func isRequestScopeValid(jwtData *JWTData, requestScope string) bool {
 }
 
 // get the subscription
-func getSubscription(jwtData *JWTData, apiName string, apiVersion string) Subscription {
+func getSubscription(jwtData *JWT, apiName string, apiVersion string) Subscription {
 
 	var sub Subscription
 	for _, api := range jwtData.SubscribedAPIs {
@@ -247,7 +225,7 @@ func getSubscription(jwtData *JWTData, apiName string, apiVersion string) Subscr
 }
 
 // get token data for JWT
-func getTokenDataForJWT(jwtData *JWTData, apiName string, apiVersion string) TokenData {
+func getTokenDataForJWT(jwtData *JWT, apiName string, apiVersion string) TokenData {
 
 	var token TokenData
 

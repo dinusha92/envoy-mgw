@@ -80,27 +80,19 @@ static_resources:
     # This timeout controls the initial TCP handshake timeout - not the timeout for the
     # entire request.
     connect_timeout: 0.25s
-  - name: zipkin
-    connect_timeout: 1s
-    type: strict_dns
-    lb_policy: round_robin
-    load_assignment:
-      cluster_name: zipkin
-      endpoints:
-      - lb_endpoints:
-        - endpoint:
-            address:
-              socket_address:
-                address: 172.17.0.1
-                port_value: 9411
-tracing:
-  http:
-    name: envoy.tracers.zipkin
-    typed_config:
-      "@type": type.googleapis.com/envoy.config.trace.v2.ZipkinConfig
-      collector_cluster: zipkin
-      collector_endpoint: "/api/v2/spans"
-      collector_endpoint_version: HTTP_JSON
+#  - name: zipkin
+#    connect_timeout: 1s
+#    type: strict_dns
+#    lb_policy: round_robin
+#    load_assignment:
+#      cluster_name: zipkin
+#      endpoints:
+#      - lb_endpoints:
+#        - endpoint:
+#            address:
+#              socket_address:
+#                address: 172.17.0.1
+#                port_value: 9411
 stats_sinks:
   name: envoy.stat_sinks.statsd
   config:

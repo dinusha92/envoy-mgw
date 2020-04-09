@@ -2,10 +2,9 @@ package main
 
 import (
 	"context"
-	filters "envoy-test-filter/filters"
+	"envoy-test-filter/controller"
 	"fmt"
 	ext_authz "github.com/envoyproxy/go-control-plane/envoy/service/auth/v2"
-	"github.com/gogo/googleapis/google/rpc"
 	"github.com/golang/protobuf/jsonpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -55,17 +54,18 @@ func (s *server) Check(ctx context.Context, req *ext_authz.CheckRequest) (*ext_a
 	} else {
 		fmt.Println(js)
 	}
+	return controller.ExecuteFilters(ctx,req)
     // Validate the token by calling the token filter.
-	resp , err := filters.ValidateToken(ctx, req)
-
-	//Return if the authentication failed
-	if resp.Status.Code != int32(rpc.OK) {
-		return resp, nil
-	}
-	//Continue to next filter
-
-	// Publish metrics
-	resp , err = filters.PublishMetrics(ctx, req)
-
-	return resp, err
+	//resp , err := filters.ValidateToken(ctx, req)
+	//
+	////Return if the authentication failed
+	//if resp.Status.Code != int32(rpc.OK) {
+	//	return resp, nil
+	//}
+	////Continue to next filter
+	//
+	//// Publish metrics
+	//resp , err = filters.PublishMetrics(ctx, req)
+	//
+	//return resp, err
 }
